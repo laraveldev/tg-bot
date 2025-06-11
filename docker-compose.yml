@@ -38,6 +38,8 @@ services:
       POSTGRES_DB: elnurbek-tg-bot
       POSTGRES_USER: elnurbek-tg
       POSTGRES_PASSWORD: 12345678
+    ports:
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
