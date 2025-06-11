@@ -1,0 +1,51 @@
+
+
+services:
+  elnurbek-app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: elnurbek-laravel-app
+    container_name: elnurbek-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    depends_on:
+      - elnurbek-db
+    networks:
+      - elnurbek
+
+  elnurbek-webserver:
+    image: nginx:latest
+    container_name: elnurbek-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - elnurbek-app
+    networks:
+      - elnurbek
+
+  elnurbek-db:
+    image: postgres:16
+    container_name: elnurbek-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: elnurbek-tg-bot
+      POSTGRES_USER: elnurbek-tg
+      POSTGRES_PASSWORD: 12345678
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - elnurbek
+
+networks:
+  elnurbek:
+    driver: bridge
+
+volumes:
+  pgdata:
