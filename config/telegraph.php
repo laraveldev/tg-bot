@@ -4,6 +4,18 @@ use DefStudio\Telegraph\Telegraph;
 
 return [
     /*
+|--------------------------------------------------------------------------
+| Default Allowed Updates
+|--------------------------------------------------------------------------
+|
+| Here you may specify which update types you want your Telegram bot
+| to receive. If you want to receive all update types, leave this empty.
+|
+*/
+
+'default_allowed_updates' => ['chat_member'], // yoki ['message', 'chat_member'] kabi
+
+    /*
      * Telegram api base url, it can be overridden
      * for self-hosted servers
      */
@@ -28,7 +40,7 @@ return [
          *
          * For reference, see https://docs.defstudio.it/telegraph/webhooks/overview
          */
-        'handler' => DefStudio\Telegraph\Handlers\EmptyWebhookHandler::class,
+        'handler' => App\Http\Controllers\TelegramController::class,
 
         /*
          * Middleware to be applied to the webhook route
