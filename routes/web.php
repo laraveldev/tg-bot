@@ -1,3 +1,7 @@
 <?php
-// Webhook faqat controller orqali ishlaydi, shuning uchun bitta route kifoya
+
 use Illuminate\Support\Facades\Route;
+
+Route::get('/', function () {
+    return view('home');
+});
