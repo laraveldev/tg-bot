@@ -57,7 +57,7 @@
         
         <div class="bot-info">
             <h3>Bot holati: <span class="status active">FAOL</span></h3>
-            <p><strong>Bot nomi:</strong> @elnurbekbot</p>
+            <p><strong>Bot nomi:</strong> @@sendmessage51_bot</p>
             <p><strong>Webhook:</strong> O'rnatilgan ✅</p>
             <p><strong>Framework:</strong> Laravel 12 + Telegraph</p>
         </div>
@@ -73,7 +73,7 @@
         
         <div class="bot-info">
             <h3>🔗 Telegram botga o'tish:</h3>
-            <p><a href="https://t.me/elnurbekbot" target="_blank" style="color: #0088cc; text-decoration: none; font-weight: bold;">@elnurbekbot</a> ga o'ting va /start tugmasini bosing!</p>
+            <p><a href="https://t.me/sendmessage51_bot" target="_blank" style="color: #0088cc; text-decoration: none; font-weight: bold;">@elnurbekbot</a> ga o'ting va /start tugmasini bosing!</p>
         </div>
     </div>
 </body>
