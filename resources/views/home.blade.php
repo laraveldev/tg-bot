@@ -53,7 +53,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🤖 Elnurbek Telegram Bot</h1>
+        <h1>🤖 Elnurbek Assistant</h1>
         
         <div class="bot-info">
             <h3>Bot holati: <span class="status active">FAOL</span></h3>
