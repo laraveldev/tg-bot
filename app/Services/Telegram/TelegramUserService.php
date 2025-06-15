@@ -89,7 +89,7 @@ class TelegramUserService
             'chat_type' => $chatId < 0 ? 'group' : 'private'
         ]);
         
-        // Find existing user by user_id or chat_id
+        // Find existing user by user_id first (most reliable)
         $user = null;
         if ($userId) {
             // Always prioritize user_id lookup first
@@ -108,6 +108,20 @@ class TelegramUserService
                 'chat_id' => $chatId,
                 'found' => $user ? true : false,
                 'role' => $user ? $user->role : null
+            ]);
+        }
+        
+        // If this is a private chat and we found a user, make sure they can access this chat
+        if ($chatId > 0 && $user && $user->telegram_chat_id != $chatId) {
+            // Update the chat_id for private chats to current chat
+            $user->telegram_chat_id = $chatId;
+            $user->save();
+            
+            Log::info('Updated private chat ID for user', [
+                'user_id' => $userId,
+                'old_chat_id' => $user->telegram_chat_id,
+                'new_chat_id' => $chatId,
+                'role' => $user->role
             ]);
         }
         

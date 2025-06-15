@@ -231,5 +231,47 @@ class MessageService
             . "💼 Ushbu bot Laravel + Telegraph yordamida yaratilgan.\n"
             . "🚀 Yangi bot loyihalar uchun murojaat qiling!";
     }
+
+    /**
+     * Get supervisor keyboard
+     */
+    public function getSupervisorKeyboard()
+    {
+        return \DefStudio\Telegraph\Keyboard\ReplyKeyboard::make()
+            ->row([
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('📊 Tushlik Holati'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('📋 Jadval')
+            ])
+            ->row([
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('⚙️ Sozlamalar'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('👥 Operatorlar')
+            ])
+            ->row([
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('🔄 Navbat Tuzish'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('➡️ Keyingi Guruh')
+            ])
+            ->row([
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('ℹ️ Ma\'lumot'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('❓ Yordam')
+            ])
+            ->resize();
+    }
+
+    /**
+     * Get regular user keyboard
+     */
+    public function getRegularKeyboard()
+    {
+        return \DefStudio\Telegraph\Keyboard\ReplyKeyboard::make()
+            ->row([
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('ℹ️ Ma\'lumot'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('📞 Aloqa')
+            ])
+            ->row([
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('❓ Yordam'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('ℹ️ Bot Haqida')
+            ])
+            ->resize();
+    }
 }
 

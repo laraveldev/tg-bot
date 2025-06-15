@@ -98,24 +98,57 @@ class Handler extends WebhookHandler
 
     public function help(): void
     {
-        $this->initializeServices();
-        
         try {
+            $this->initializeServices();
+            
             $message = request()->input('message') ?? request()->input('edited_message');
             $userId = $message['from']['id'] ?? null;
             
             $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-            $helpMessage = $this->messageService->getHelpMessage($user);
             
-            $this->messageService->sendMessage($helpMessage);
-            
-        } catch (Exception $e) {
-            Log::error('Help command error', [
-                'error' => $e->getMessage(),
-                'chat_id' => $this->chat->chat_id ?? 'unknown'
+            Log::info('Help command started', [
+                'user_id' => $userId,
+                'user_role' => $user->role,
+                'is_supervisor' => $user->isSupervisor()
             ]);
             
-            $this->reply("❌ Xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring.");
+            // Simple help message first
+            $helpText = "🆘 Yordam - Mavjud buyruqlar:\n\n";
+            $helpText .= "📋 Asosiy buyruqlar:\n";
+            $helpText .= "/start - Botni boshlash\n";
+            $helpText .= "/info - Ma'lumotlar\n";
+            $helpText .= "/help - Yordam\n\n";
+            
+            if ($user->isSupervisor()) {
+                $helpText .= "👨‍💼 Supervisor buyruqlari:\n";
+                $helpText .= "/lunch_status - Tushlik holati\n";
+                $helpText .= "/lunch_schedule - Jadval\n";
+                $helpText .= "/operators - Operatorlar\n";
+            }
+            
+            // First send simple text message
+            $this->reply($helpText);
+            
+            // Then try to send keyboard
+            if ($user->isSupervisor()) {
+                $keyboard = $this->messageService->getSupervisorKeyboard();
+                $this->chat->message("👨‍💼 Supervisor paneli:")->replyKeyboard($keyboard)->send();
+            } else {
+                $keyboard = $this->messageService->getRegularKeyboard();
+                $this->chat->message("👤 Asosiy panel:")->replyKeyboard($keyboard)->send();
+            }
+            
+            Log::info('Help command completed successfully');
+            
+        } catch (Exception $e) {
+            Log::error('Help command failed', [
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile()
+            ]);
+            
+            // Simple fallback
+            $this->reply("🆘 Yordam:\n\n/start - Botni boshlash\n/info - Ma'lumotlar\n/help - Yordam");
         }
     }
 
@@ -126,22 +159,39 @@ class Handler extends WebhookHandler
         // Update user data including phone number
         $message = request()->input('message') ?? request()->input('edited_message');
         $from = $message['from'] ?? null;
+        $userId = $from['id'] ?? null;
 
         $this->userService->updateContact($this->chat->id, $contact, $from);
+        
+        // Get or create user to check their role
+        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
 
-        // Send confirmation message and remove keyboard immediately
+        // Send confirmation message
         $confirmationMessage = "✅ Raqamingiz saqlandi: " . $contact['phone_number'] . "\n\n"
             . "🎉 Siz endi barcha buyruqlardan foydalanishingiz mumkin!\n\n"
-            . "📋 Asosiy buyruqlar:\n"
-            . "/info - Ma'lumotlaringiz\n"
-            . "/about - Bot haqida\n"
-            . "/contact - Bog'lanish\n"
-            . "/help - Yordam";
+            . "💡 /help buyrug'ini bosib barcha imkoniyatlarni ko'ring.";
             
-        // Use direct reply with keyboard removal
+        // First remove old keyboard
         $this->chat
             ->message($confirmationMessage)
             ->removeReplyKeyboard()
+            ->send();
+            
+        // Wait a moment then show appropriate keyboard
+        sleep(1);
+        
+        // Show role-based keyboard automatically
+        if ($user->isSupervisor()) {
+            $keyboard = $this->messageService->getSupervisorKeyboard();
+            $helpMessage = "👨‍💼 Supervisor sifatida sizga quyidagi buyruqlar mavjud:";
+        } else {
+            $keyboard = $this->messageService->getRegularKeyboard();
+            $helpMessage = "👤 Sizga quyidagi buyruqlar mavjud:";
+        }
+        
+        $this->chat
+            ->message($helpMessage)
+            ->replyKeyboard($keyboard)
             ->send();
     }
 
@@ -157,6 +207,60 @@ class Handler extends WebhookHandler
         
         // Check if user is registered in management system
         $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        
+        // Check if this is a button text that corresponds to a command
+        $buttonText = trim($text->toString());
+        Log::info('Button text received', [
+            'text' => $buttonText, 
+            'length' => strlen($buttonText),
+            'bytes' => bin2hex($buttonText)
+        ]);
+        
+        $commandMapping = [
+            '📊 Tushlik Holati' => 'lunch_status',
+            '📋 Jadval' => 'lunch_schedule',
+            '⚙️ Sozlamalar' => 'lunch_settings',
+            '👥 Operatorlar' => 'operators',
+            '🔄 Navbat Tuzish' => 'reorder_queue',
+            '➡️ Keyingi Guruh' => 'next_group',
+            'ℹ️ Ma\'lumot' => 'info',
+            '❓ Yordam' => 'help',
+            '📞 Aloqa' => 'contact',
+            'ℹ️ Bot Haqida' => 'about'
+        ];
+        
+        // Log all available mappings for debugging
+        Log::info('Available command mappings', ['mappings' => array_keys($commandMapping)]);
+        
+        if (isset($commandMapping[$buttonText])) {
+            $methodName = $commandMapping[$buttonText];
+            Log::info('Button mapped to command', ['button' => $buttonText, 'command' => $methodName]);
+            
+            // Check permissions for supervisor commands
+            $supervisorCommands = ['lunch_status', 'lunch_schedule', 'lunch_settings', 'operators', 'reorder_queue', 'next_group'];
+            
+            if (in_array($methodName, $supervisorCommands) && !$user->isSupervisor()) {
+                $this->reply("❌ Bu buyruq faqat supervisor lar uchun!");
+                return;
+            }
+            
+            // Call the appropriate method
+            if (method_exists($this, $methodName)) {
+                $this->$methodName();
+                return;
+            }
+        }
+        
+        // If no exact match, try partial matching for common words
+        foreach ($commandMapping as $buttonKey => $command) {
+            if (strpos($buttonText, 'Tushlik') !== false && strpos($buttonKey, 'Tushlik') !== false) {
+                Log::info('Partial match found', ['button' => $buttonText, 'matched_key' => $buttonKey, 'command' => $command]);
+                if (method_exists($this, $command)) {
+                    $this->$command();
+                    return;
+                }
+            }
+        }
         
         // Handle chat message through service (this already replies)
         $this->commandService->handleChatMessage($user, $this);
@@ -178,6 +282,22 @@ class Handler extends WebhookHandler
         if ($command === 'about') {
             $this->about();
             return;
+        }
+        
+        // Special command for testing - make user supervisor
+        if ($command === 'make_me_supervisor') {
+            $message = request()->input('message') ?? request()->input('edited_message');
+            $userId = $message['from']['id'] ?? null;
+            
+            if ($userId) {
+                // Update user to supervisor
+                $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+                $user->role = 'supervisor';
+                $user->save();
+                
+                $this->reply("✅ Siz supervisor sifatida belgilandi! /help ni bosib tekshiring.");
+                return;
+            }
         }
         
         $message = request()->input('message') ?? request()->input('edited_message');

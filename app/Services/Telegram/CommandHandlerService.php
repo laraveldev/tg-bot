@@ -37,7 +37,8 @@ class CommandHandlerService
             . "/info - Ma'lumotlaringiz\n"
             . "/help - Yordam";
             
-        $handler->reply($message);
+        // Use chat message instead of protected reply method
+        $handler->chat->message($message)->send();
     }
     
     /**
@@ -54,7 +55,8 @@ class CommandHandlerService
             . "/info - Ma'lumotlaringiz\n"
             . "/help - Yordam";
             
-        $handler->reply($message);
+        // Use chat message instead of protected reply method
+        $handler->chat->message($message)->send();
     }
     
     /**
@@ -73,7 +75,8 @@ class CommandHandlerService
                 . "/contact - Bog'lanish\n"
                 . "/help - Yordam";
                 
-            $handler->reply($message);
+            // Use chat message instead of protected reply method
+            $handler->chat->message($message)->send();
         }
     }
     
@@ -96,6 +99,7 @@ class CommandHandlerService
                 ->removeReplyKeyboard()
                 ->send();
         } else {
+            // For operators and supervisors, show their available commands
             $this->showAvailableCommands($user, $handler);
         }
     }
