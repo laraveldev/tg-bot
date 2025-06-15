@@ -23,7 +23,7 @@ class LunchScheduleService
     /**
      * Bugungi kun uchun tushlik jadvali yaratish
      */
-    public function createDailySchedule(WorkShift $workShift, array $operatorIds = null): LunchSchedule
+    public function createDailySchedule(WorkShift $workShift, ?array $operatorIds = null): LunchSchedule
     {
         $today = Carbon::today();
         
@@ -221,9 +221,9 @@ class LunchScheduleService
      */
     public function createOrUpdateSchedule(
         WorkShift $workShift, 
-        Carbon $date = null, 
-        array $operatorIds = null,
-        int $operatorsPerGroup = null
+        ?Carbon $date = null, 
+        ?array $operatorIds = null,
+        ?int $operatorsPerGroup = null
     ): LunchSchedule {
         $date = $date ?? Carbon::today();
         $operatorsPerGroup = $operatorsPerGroup ?? $workShift->max_lunch_operators;
