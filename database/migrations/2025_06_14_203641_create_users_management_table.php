@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('last_name')->nullable();
             $table->string('username')->nullable();
             $table->string('phone_number')->nullable();
-            $table->enum('role', ['supervisor', 'operator', 'user'])->default('user');
+            $table->enum('role', ['supervisor', 'operator'])->default('operator');
             $table->enum('status', ['active', 'inactive', 'lunch_break'])->default('active');
             $table->boolean('is_available_for_lunch')->default(true);
             $table->integer('lunch_order')->nullable(); // Tushlik navbati

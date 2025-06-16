@@ -32,7 +32,6 @@ class UserManagement extends Model
     // Role constants
     const ROLE_SUPERVISOR = 'supervisor';
     const ROLE_OPERATOR = 'operator';
-    const ROLE_USER = 'user';
     
     // Status constants
     const STATUS_ACTIVE = 'active';

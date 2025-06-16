@@ -199,9 +199,7 @@ class MessageService
             
             $message .= "👤 Sizning rolingiz: {$roleText}";
             
-            if ($user->role === 'user') {
-                $message .= "\n\n💡 Qo'shimcha imkoniyatlar uchun administrator bilan bog'laning.";
-            }
+            // All users are either supervisor or operator
         } else {
             $message .= "💡 Qo'shimcha imkoniyatlar uchun administrator bilan bog'laning.";
         }
@@ -258,18 +256,22 @@ class MessageService
     }
 
     /**
-     * Get regular user keyboard
+     * Get operator keyboard
      */
-    public function getRegularKeyboard()
+    public function getOperatorKeyboard()
     {
         return \DefStudio\Telegraph\Keyboard\ReplyKeyboard::make()
             ->row([
-                \DefStudio\Telegraph\Keyboard\ReplyButton::make('ℹ️ Ma\'lumot'),
-                \DefStudio\Telegraph\Keyboard\ReplyButton::make('📞 Aloqa')
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('🍽️ Mening Tushligim'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('📅 Tushlik Navbati')
             ])
             ->row([
-                \DefStudio\Telegraph\Keyboard\ReplyButton::make('❓ Yordam'),
-                \DefStudio\Telegraph\Keyboard\ReplyButton::make('ℹ️ Bot Haqida')
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('✅ Tushlikka Chiqdim'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('🔙 Tushlikdan Qaytdim')
+            ])
+            ->row([
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('ℹ️ Ma\'lumot'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('❓ Yordam')
             ])
             ->resize();
     }

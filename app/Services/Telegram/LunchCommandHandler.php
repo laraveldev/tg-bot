@@ -175,13 +175,131 @@ class LunchCommandHandler
             $message .= "📅 Ish vaqti: {$shift->start_time->format('H:i')} - {$shift->end_time->format('H:i')}\n";
             $message .= "🍽️ Tushlik vaqti: {$shift->lunch_start_time->format('H:i')} - {$shift->lunch_end_time->format('H:i')}\n";
             $message .= "👥 Maksimal operatorlar: {$shift->max_lunch_operators}\n";
-            $message .= "⏱️ Tushlik davomiyligi: {$shift->lunch_duration_minutes} daqiqa\n";
+            $message .= "⏱️ Tushlik davomiyligi: {$shift->lunch_duration} daqiqa\n";
             $message .= "📊 Status: " . ($shift->is_active ? '✅ Faol' : '❌ Nofaol') . "\n\n";
         }
         
-        $message .= "ℹ️ Sozlamalarni o'zgartirish uchun admin panel dan foydalaning.";
+        $message .= "🔧 Sozlamalarni o'zgartirish:\n";
+        $message .= "/set_lunch_time [smena_id] [bosh_vaqt] [tug_vaqt]\n";
+        $message .= "/set_lunch_duration [smena_id] [daqiqa]\n";
+        $message .= "/set_max_operators [smena_id] [son]\n\n";
+        $message .= "Misol: /set_lunch_time 1 12:00 15:00";
         
         return $message;
+    }
+    
+    /**
+     * Set lunch time for work shift
+     */
+    public function handleSetLunchTime(UserManagement $user, array $params): string
+    {
+        if (!$user->isSupervisor()) {
+            return "❌ Bu buyruq faqat supervisor uchun!";
+        }
+        
+        if (count($params) < 3) {
+            return "❌ Format: /set_lunch_time [smena_id] [bosh_vaqt] [tug_vaqt]\nMisol: /set_lunch_time 1 12:00 15:00";
+        }
+        
+        $shiftId = (int) $params[0];
+        $startTime = $params[1];
+        $endTime = $params[2];
+        
+        // Validate time format
+        if (!preg_match('/^\d{2}:\d{2}$/', $startTime) || !preg_match('/^\d{2}:\d{2}$/', $endTime)) {
+            return "❌ Vaqt formati noto'g'ri! Format: HH:MM (masalan: 12:00)";
+        }
+        
+        $shift = WorkShift::find($shiftId);
+        if (!$shift) {
+            return "❌ Ish smenasi topilmadi! ID: {$shiftId}";
+        }
+        
+        try {
+            $shift->lunch_start_time = $startTime;
+            $shift->lunch_end_time = $endTime;
+            $shift->save();
+            
+            return "✅ Tushlik vaqti o'zgartirildi!\n\n" .
+                   "🏢 Smena: {$shift->name}\n" .
+                   "🍽️ Yangi tushlik vaqti: {$startTime} - {$endTime}";
+        } catch (\Exception $e) {
+            return "❌ Xatolik yuz berdi: {$e->getMessage()}";
+        }
+    }
+    
+    /**
+     * Set lunch duration
+     */
+    public function handleSetLunchDuration(UserManagement $user, array $params): string
+    {
+        if (!$user->isSupervisor()) {
+            return "❌ Bu buyruq faqat supervisor uchun!";
+        }
+        
+        if (count($params) < 2) {
+            return "❌ Format: /set_lunch_duration [smena_id] [daqiqa]\nMisol: /set_lunch_duration 1 30";
+        }
+        
+        $shiftId = (int) $params[0];
+        $duration = (int) $params[1];
+        
+        if ($duration < 15 || $duration > 120) {
+            return "❌ Tushlik davomiyligi 15-120 daqiqa orasida bo'lishi kerak!";
+        }
+        
+        $shift = WorkShift::find($shiftId);
+        if (!$shift) {
+            return "❌ Ish smenasi topilmadi! ID: {$shiftId}";
+        }
+        
+        try {
+            $shift->lunch_duration = $duration;
+            $shift->save();
+            
+            return "✅ Tushlik davomiyligi o'zgartirildi!\n\n" .
+                   "🏢 Smena: {$shift->name}\n" .
+                   "⏱️ Yangi davomiylik: {$duration} daqiqa";
+        } catch (\Exception $e) {
+            return "❌ Xatolik yuz berdi: {$e->getMessage()}";
+        }
+    }
+    
+    /**
+     * Set max operators for lunch
+     */
+    public function handleSetMaxOperators(UserManagement $user, array $params): string
+    {
+        if (!$user->isSupervisor()) {
+            return "❌ Bu buyruq faqat supervisor uchun!";
+        }
+        
+        if (count($params) < 2) {
+            return "❌ Format: /set_max_operators [smena_id] [son]\nMisol: /set_max_operators 1 3";
+        }
+        
+        $shiftId = (int) $params[0];
+        $maxOperators = (int) $params[1];
+        
+        if ($maxOperators < 1 || $maxOperators > 10) {
+            return "❌ Maksimal operatorlar soni 1-10 orasida bo'lishi kerak!";
+        }
+        
+        $shift = WorkShift::find($shiftId);
+        if (!$shift) {
+            return "❌ Ish smenasi topilmadi! ID: {$shiftId}";
+        }
+        
+        try {
+            $shift->max_lunch_operators = $maxOperators;
+            $shift->save();
+            
+            return "✅ Maksimal operatorlar soni o'zgartirildi!\n\n" .
+                   "🏢 Smena: {$shift->name}\n" .
+                   "👥 Yangi maksimal: {$maxOperators} nafar";
+        } catch (\Exception $e) {
+            return "❌ Xatolik yuz berdi: {$e->getMessage()}";
+        }
     }
     
     /**

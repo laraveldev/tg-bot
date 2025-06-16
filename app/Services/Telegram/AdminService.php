@@ -104,6 +104,24 @@ class AdminService
     }
     
     /**
+     * Store user as operator (for non-admin group members)
+     */
+    private function storeUserAsOperator(int $userId, array $userInfo): void
+    {
+        UserManagement::updateOrCreate(
+            ['telegram_user_id' => $userId],
+            [
+                'telegram_chat_id' => $userId, // Use user ID as chat ID for private chats
+                'first_name' => $userInfo['first_name'] ?? null,
+                'last_name' => $userInfo['last_name'] ?? null,
+                'username' => $userInfo['username'] ?? null,
+                'role' => UserManagement::ROLE_OPERATOR,
+                'status' => UserManagement::STATUS_ACTIVE,
+            ]
+        );
+    }
+    
+    /**
      * Check if user is stored as supervisor
      */
     private function isStoredSupervisor(int $userId): bool

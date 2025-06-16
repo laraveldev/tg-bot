@@ -82,6 +82,33 @@ class TelegramUserService
         // Check admin status and update if needed
         $isAdmin = $adminService->checkAndStoreUserAdminStatus($chatId, $userId);
         
+        // For group chats, if user is not admin but is a group member,
+        // make sure they are stored as operator
+        if ($chatId < 0 && !$isAdmin && $userId) {
+            $message = request()->input('message') ?? request()->input('edited_message');
+            $userInfo = $message['from'] ?? [];
+            
+            // Store as operator if not already in system
+            $existingUser = UserManagement::where('telegram_user_id', $userId)->first();
+            if (!$existingUser) {
+                UserManagement::create([
+                    'telegram_chat_id' => $userId, // Use user ID for cross-chat identification
+                    'telegram_user_id' => $userId,
+                    'first_name' => $userInfo['first_name'] ?? null,
+                    'last_name' => $userInfo['last_name'] ?? null,
+                    'username' => $userInfo['username'] ?? null,
+                    'role' => UserManagement::ROLE_OPERATOR,
+                    'status' => UserManagement::STATUS_ACTIVE,
+                ]);
+                
+                Log::info('Created new operator for group member', [
+                    'user_id' => $userId,
+                    'group_chat_id' => $chatId,
+                    'role' => UserManagement::ROLE_OPERATOR
+                ]);
+            }
+        }
+        
         Log::info('User lookup details', [
             'chat_id' => $chatId,
             'user_id' => $userId,
@@ -189,7 +216,8 @@ class TelegramUserService
      */
     private function createNewUser(int $chatId, ?int $userId = null, array $userData = [], bool $isAdmin = false): UserManagement
     {
-        $defaultRole = UserManagement::ROLE_USER;
+        // Default role is OPERATOR for all group members who are not admin/owner
+        $defaultRole = UserManagement::ROLE_OPERATOR;
         
         if ($isAdmin) {
             $defaultRole = UserManagement::ROLE_SUPERVISOR;

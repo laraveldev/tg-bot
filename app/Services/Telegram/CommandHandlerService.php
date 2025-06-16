@@ -64,20 +64,8 @@ class CommandHandlerService
      */
     public function handleUnknownCommand(string $command, UserManagement $user, WebhookHandler $handler): void
     {
-        if ($user->isSupervisor() || $user->isOperator()) {
-            $this->showAvailableCommands($user, $handler);
-        } else {
-            $message = "❓ Noma'lum buyruq: {$command}\n\n"
-                . "Mavjud buyruqlar:\n"
-                . "/start - Botni boshlash\n"
-                . "/info - Ma'lumotlaringiz\n"
-                . "/about - Bot haqida\n"
-                . "/contact - Bog'lanish\n"
-                . "/help - Yordam";
-                
-            // Use chat message instead of protected reply method
-            $handler->chat->message($message)->send();
-        }
+        // All users are either supervisor or operator, so show available commands
+        $this->showAvailableCommands($user, $handler);
     }
     
     /**
@@ -85,23 +73,8 @@ class CommandHandlerService
      */
     public function handleChatMessage(UserManagement $user, WebhookHandler $handler): void
     {
-        if ($user->role === 'user') {
-            $message = "❗ Xabaringizni oldim. Quyidagi buyruqlarni sinab ko'ring:\n\n"
-                . "/start - Botni boshlash\n"
-                . "/info - Ma'lumotlaringiz\n"
-                . "/about - Bot haqida\n"
-                . "/contact - Bog'lanish\n"
-                . "/help - Yordam";
-                
-            // Reply with keyboard removal to ensure clean interface
-            $handler->chat
-                ->message($message)
-                ->removeReplyKeyboard()
-                ->send();
-        } else {
-            // For operators and supervisors, show their available commands
-            $this->showAvailableCommands($user, $handler);
-        }
+        // All users are either supervisor or operator, so show their available commands
+        $this->showAvailableCommands($user, $handler);
     }
 }
 

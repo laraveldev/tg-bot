@@ -134,8 +134,8 @@ class Handler extends WebhookHandler
                 $keyboard = $this->messageService->getSupervisorKeyboard();
                 $this->chat->message("👨‍💼 Supervisor paneli:")->replyKeyboard($keyboard)->send();
             } else {
-                $keyboard = $this->messageService->getRegularKeyboard();
-                $this->chat->message("👤 Asosiy panel:")->replyKeyboard($keyboard)->send();
+                $keyboard = $this->messageService->getOperatorKeyboard();
+                $this->chat->message("👨‍💻 Operator paneli:")->replyKeyboard($keyboard)->send();
             }
             
             Log::info('Help command completed successfully');
@@ -185,8 +185,8 @@ class Handler extends WebhookHandler
             $keyboard = $this->messageService->getSupervisorKeyboard();
             $helpMessage = "👨‍💼 Supervisor sifatida sizga quyidagi buyruqlar mavjud:";
         } else {
-            $keyboard = $this->messageService->getRegularKeyboard();
-            $helpMessage = "👤 Sizga quyidagi buyruqlar mavjud:";
+            $keyboard = $this->messageService->getOperatorKeyboard();
+            $helpMessage = "👨‍💻 Operator sifatida sizga quyidagi buyruqlar mavjud:";
         }
         
         $this->chat
@@ -217,12 +217,19 @@ class Handler extends WebhookHandler
         ]);
         
         $commandMapping = [
+            // Supervisor commands
             '📊 Tushlik Holati' => 'lunch_status',
             '📋 Jadval' => 'lunch_schedule',
             '⚙️ Sozlamalar' => 'lunch_settings',
             '👥 Operatorlar' => 'operators',
             '🔄 Navbat Tuzish' => 'reorder_queue',
             '➡️ Keyingi Guruh' => 'next_group',
+            // Operator commands
+            '🍽️ Mening Tushligim' => 'my_lunch',
+            '📅 Tushlik Navbati' => 'lunch_queue',
+            '✅ Tushlikka Chiqdim' => 'lunch_start',
+            '🔙 Tushlikdan Qaytdim' => 'lunch_end',
+            // Common commands
             'ℹ️ Ma\'lumot' => 'info',
             '❓ Yordam' => 'help',
             '📞 Aloqa' => 'contact',
@@ -284,6 +291,22 @@ class Handler extends WebhookHandler
             return;
         }
         
+        // New lunch management commands
+        if (str_starts_with($command, 'set_lunch_time')) {
+            $this->handleSetLunchTime($command);
+            return;
+        }
+        
+        if (str_starts_with($command, 'set_lunch_duration')) {
+            $this->handleSetLunchDuration($command);
+            return;
+        }
+        
+        if (str_starts_with($command, 'set_max_operators')) {
+            $this->handleSetMaxOperators($command);
+            return;
+        }
+        
         // Special command for testing - make user supervisor
         if ($command === 'make_me_supervisor') {
             $message = request()->input('message') ?? request()->input('edited_message');
@@ -306,6 +329,63 @@ class Handler extends WebhookHandler
         $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
         
         $this->commandService->handleUnknownCommand($text->toString(), $user, $this);
+    }
+    
+    /**
+     * Handle set lunch time command
+     */
+    private function handleSetLunchTime(string $command): void
+    {
+        $this->initializeServices();
+        
+        $message = request()->input('message') ?? request()->input('edited_message');
+        $userId = $message['from']['id'] ?? null;
+        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        
+        // Parse command parameters
+        $parts = explode(' ', $command);
+        array_shift($parts); // Remove command name
+        
+        $response = $this->lunchHandler->handleSetLunchTime($user, $parts);
+        $this->reply($response);
+    }
+    
+    /**
+     * Handle set lunch duration command
+     */
+    private function handleSetLunchDuration(string $command): void
+    {
+        $this->initializeServices();
+        
+        $message = request()->input('message') ?? request()->input('edited_message');
+        $userId = $message['from']['id'] ?? null;
+        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        
+        // Parse command parameters
+        $parts = explode(' ', $command);
+        array_shift($parts); // Remove command name
+        
+        $response = $this->lunchHandler->handleSetLunchDuration($user, $parts);
+        $this->reply($response);
+    }
+    
+    /**
+     * Handle set max operators command
+     */
+    private function handleSetMaxOperators(string $command): void
+    {
+        $this->initializeServices();
+        
+        $message = request()->input('message') ?? request()->input('edited_message');
+        $userId = $message['from']['id'] ?? null;
+        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        
+        // Parse command parameters
+        $parts = explode(' ', $command);
+        array_shift($parts); // Remove command name
+        
+        $response = $this->lunchHandler->handleSetMaxOperators($user, $parts);
+        $this->reply($response);
     }
     
     

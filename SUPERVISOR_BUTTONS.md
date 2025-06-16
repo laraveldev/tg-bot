@@ -1,7 +1,7 @@
 # 👨‍💼 Supervisor Button Interface - Muvaffaqiyat! ✅
 
 ## 🎯 Maqsad
-Supervisor lar uchun maxsus button interface yaratib, oddiy foydalanuvchilar uchun faqat asosiy buttonlarni ko'rsatish.
+Ikki xil role tizimi: **Supervisor** (admin/owner) va **Operator** (guruh a'zolari) uchun maxsus button interface yaratish.
 
 ## 🛠️ Qo'shilgan Imkoniyatlar
 
