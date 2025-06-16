@@ -73,7 +73,7 @@
         
         <div class="bot-info">
             <h3>🔗 Telegram botga o'tish:</h3>
-            <p><a href="https://t.me/sendmessage51_bot" target="_blank" style="color: #0088cc; text-decoration: none; font-weight: bold;">@elnurbekbot</a> ga o'ting va /start tugmasini bosing!</p>
+            <p><a href="https://t.me/sendmessage51_bot" target="_blank" style="color: #0088cc; text-decoration: none; font-weight: bold;">Botga kirish uchun bosing</a> ga o'ting va /start tugmasini bosing! hamda /register_me buyrug'ini berib ro'yxatdan o'ting</p>
         </div>
     </div>
 </body>
