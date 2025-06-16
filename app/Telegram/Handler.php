@@ -3,18 +3,21 @@
 namespace App\Telegram;
 
 use DefStudio\Telegraph\Handlers\WebhookHandler;
-use DefStudio\Telegraph\Keyboard\ReplyKeyboard;
-use DefStudio\Telegraph\Keyboard\ReplyButton;
-use DefStudio\Telegraph\Keyboard\Keyboard;
 use Illuminate\Support\Stringable;
 use App\Services\Telegram\TelegramUserService;
 use App\Services\Telegram\MessageService;
 use App\Services\Telegram\CommandHandlerService;
 use App\Services\Telegram\LunchCommandHandler;
+use App\Services\Telegram\StartService;
+use App\Services\Telegram\ButtonCommandService;
+use App\Services\Telegram\AdminCommandService;
+use App\Services\Telegram\StatisticsService;
+use App\Services\Telegram\SettingsCommandService;
+use App\Services\Telegram\HelpService;
+use App\Services\Telegram\InfoCommandService;
 use App\Services\Telegram\GroupMembersService;
 use App\Services\LunchManagement\LunchScheduleService;
-use Illuminate\Support\Facades\Log;
-use Exception;
+
 
 class Handler extends WebhookHandler
 {
@@ -23,6 +26,14 @@ class Handler extends WebhookHandler
     private CommandHandlerService $commandService;
     private LunchCommandHandler $lunchHandler;
     private LunchScheduleService $scheduleService;
+    private StartService $startService;
+    private ButtonCommandService $buttonService;
+    private AdminCommandService $adminService;
+    private StatisticsService $statisticsService;
+    private SettingsCommandService $settingsService;
+    private HelpService $helpService;
+    private InfoCommandService $infoService;
+    private GroupMembersService $groupMembersService;
 
     public function __construct()
     {
@@ -36,164 +47,75 @@ class Handler extends WebhookHandler
     private function initializeServices(): void
     {
         if (!isset($this->messageService)) {
-            $this->messageService = new MessageService($this->bot, $this->chat);
+            // Get chat from request data since protected property can't be accessed
+            $chatId = $this->getChatId();
+            $chat = \DefStudio\Telegraph\Models\TelegraphChat::where('chat_id', $chatId)->first();
+            
+            $this->messageService = new MessageService($this->bot, $chat);
             $this->commandService = new CommandHandlerService();
             $this->lunchHandler = new LunchCommandHandler($this->scheduleService, $this->messageService);
+            $this->startService = new StartService($this->userService, $this->messageService, $this);
+            $this->buttonService = new ButtonCommandService($this->userService, $this);
+            $this->adminService = new AdminCommandService($this->userService, $this);
+            $this->statisticsService = new StatisticsService($this->userService, $this);
+            $this->settingsService = new SettingsCommandService($this->userService, $this->lunchHandler, $this);
+            $this->helpService = new HelpService($this->userService, $this->messageService, $this);
+            $this->infoService = new InfoCommandService($this->userService, $this->messageService, $this->bot, $chat);
+            $this->groupMembersService = new GroupMembersService();
         }
+    }
+    
+    /**
+     * Get chat ID from request
+     */
+    public function getChatId(): string
+    {
+        $message = request()->input('message') ?? request()->input('edited_message');
+        return (string) $message['chat']['id'];
+    }
+    
+    /**
+     * Public reply method for services
+     */
+    public function sendReply(string $message): void
+    {
+        $this->reply($message);
     }
 
     public function start(): void
     {
         $this->initializeServices();
-        
-        // Update user data
-        $this->userService->updateUserData($this->chat->id);
-
-        // Send welcome message
-        $this->reply("👋 Salom! Botga xush kelibsiz!");
-
-        // Create contact request button
-        $contactButton = ReplyButton::make('📱 Raqam yuborish')->requestContact();
-        
-        // Create keyboard with the contact button
-        $keyboard = ReplyKeyboard::make()
-            ->row([$contactButton])
-            ->resize()
-            ->oneTime();
-
-        // Send message with keyboard
-        $this->chat
-            ->message("📞 Iltimos, telefon raqamingizni yuboring:")
-            ->replyKeyboard($keyboard)
-            ->send();
+        $this->startService->handleStart();
     }
 
     public function info(): void
     {
         $this->initializeServices();
-        
-        $userData = $this->userService->getUserData($this->chat->id);
-        $message = request()->input('message') ?? request()->input('edited_message');
-        $userId = $message['from']['id'] ?? null;
-        
-        // Get user from management system
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-        
-        $message = $this->messageService->getUserInfoMessage($userData, $userId, $user);
-        $this->reply($message);
+        $this->infoService->handleInfo();
     }
 
     public function about(): void
     {
         $this->initializeServices();
-        $message = $this->messageService->getAboutMessage();
-        $this->reply($message);
+        $this->infoService->handleAbout();
     }
 
     public function contact(): void
     {
         $this->initializeServices();
-        $message = $this->messageService->getContactMessage();
-        $this->messageService->sendMessage($message);
+        $this->infoService->handleContact();
     }
 
     public function help(): void
     {
-        try {
-            $this->initializeServices();
-            
-            $message = request()->input('message') ?? request()->input('edited_message');
-            $userId = $message['from']['id'] ?? null;
-            
-            $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-            
-            Log::info('Help command started', [
-                'user_id' => $userId,
-                'user_role' => $user->role,
-                'is_supervisor' => $user->isSupervisor()
-            ]);
-            
-            // Simple help message first
-            $helpText = "🆘 Yordam - Mavjud buyruqlar:\n\n";
-            $helpText .= "📋 Asosiy buyruqlar:\n";
-            $helpText .= "/start - Botni boshlash\n";
-            $helpText .= "/info - Ma'lumotlar\n";
-            $helpText .= "/help - Yordam\n\n";
-            
-            if ($user->isSupervisor()) {
-                $helpText .= "👨‍💼 Supervisor buyruqlari:\n";
-                $helpText .= "/lunch_status - Tushlik holati\n";
-                $helpText .= "/lunch_schedule - Jadval\n";
-                $helpText .= "/operators - Operatorlar\n";
-            }
-            
-            // First send simple text message
-            $this->reply($helpText);
-            
-            // Then try to send keyboard
-            if ($user->isSupervisor()) {
-                $keyboard = $this->messageService->getSupervisorKeyboard();
-                $this->chat->message("👨‍💼 Supervisor paneli:")->replyKeyboard($keyboard)->send();
-            } else {
-                $keyboard = $this->messageService->getOperatorKeyboard();
-                $this->chat->message("👨‍💻 Operator paneli:")->replyKeyboard($keyboard)->send();
-            }
-            
-            Log::info('Help command completed successfully');
-            
-        } catch (Exception $e) {
-            Log::error('Help command failed', [
-                'error' => $e->getMessage(),
-                'line' => $e->getLine(),
-                'file' => $e->getFile()
-            ]);
-            
-            // Simple fallback
-            $this->reply("🆘 Yordam:\n\n/start - Botni boshlash\n/info - Ma'lumotlar\n/help - Yordam");
-        }
+        $this->initializeServices();
+        $this->helpService->handleHelp();
     }
 
     public function onContactReceived(array $contact): void
     {
         $this->initializeServices();
-        
-        // Update user data including phone number
-        $message = request()->input('message') ?? request()->input('edited_message');
-        $from = $message['from'] ?? null;
-        $userId = $from['id'] ?? null;
-
-        $this->userService->updateContact($this->chat->id, $contact, $from);
-        
-        // Get or create user to check their role
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-
-        // Send confirmation message
-        $confirmationMessage = "✅ Raqamingiz saqlandi: " . $contact['phone_number'] . "\n\n"
-            . "🎉 Siz endi barcha buyruqlardan foydalanishingiz mumkin!\n\n"
-            . "💡 /help buyrug'ini bosib barcha imkoniyatlarni ko'ring.";
-            
-        // First remove old keyboard
-        $this->chat
-            ->message($confirmationMessage)
-            ->removeReplyKeyboard()
-            ->send();
-            
-        // Wait a moment then show appropriate keyboard
-        sleep(1);
-        
-        // Show role-based keyboard automatically
-        if ($user->isSupervisor()) {
-            $keyboard = $this->messageService->getSupervisorKeyboard();
-            $helpMessage = "👨‍💼 Supervisor sifatida sizga quyidagi buyruqlar mavjud:";
-        } else {
-            $keyboard = $this->messageService->getOperatorKeyboard();
-            $helpMessage = "👨‍💻 Operator sifatida sizga quyidagi buyruqlar mavjud:";
-        }
-        
-        $this->chat
-            ->message($helpMessage)
-            ->replyKeyboard($keyboard)
-            ->send();
+        $this->startService->handleContactReceived($contact);
     }
 
     protected function handleChatMessage(Stringable $text): void
@@ -201,74 +123,28 @@ class Handler extends WebhookHandler
         $this->initializeServices();
         
         // Update user data from every message
-        $this->userService->updateUserData($this->chat->id);
+        $this->userService->updateUserData($this->getChatId());
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
         
         // Check if user is registered in management system
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
-        // Check if this is a button text that corresponds to a command
+        // Process button command through service
         $buttonText = trim($text->toString());
-        Log::info('Button text received', [
-            'text' => $buttonText, 
-            'length' => strlen($buttonText),
-            'bytes' => bin2hex($buttonText)
-        ]);
+        $command = $this->buttonService->processButtonCommand($buttonText);
         
-        $commandMapping = [
-            // Supervisor commands
-            '📊 Tushlik Holati' => 'lunch_status',
-            '📋 Jadval' => 'lunch_schedule',
-            '⚙️ Sozlamalar' => 'lunch_settings',
-            '👥 Operatorlar' => 'operators',
-            '🔄 Navbat Tuzish' => 'reorder_queue',
-            '➡️ Keyingi Guruh' => 'next_group',
-            '🔄 Guruh Sinxronlash' => 'sync_group_members',
-            '📊 Statistika' => 'group_statistics',
-            // Operator commands
-            '🍽️ Mening Tushligim' => 'my_lunch',
-            '📅 Tushlik Navbati' => 'lunch_queue',
-            '✅ Tushlikka Chiqdim' => 'lunch_start',
-            '🔙 Tushlikdan Qaytdim' => 'lunch_end',
-            // Common commands
-            'ℹ️ Ma\'lumot' => 'info',
-            '❓ Yordam' => 'help',
-            '📞 Aloqa' => 'contact',
-            'ℹ️ Bot Haqida' => 'about'
-        ];
-        
-        // Log all available mappings for debugging
-        Log::info('Available command mappings', ['mappings' => array_keys($commandMapping)]);
-        
-        if (isset($commandMapping[$buttonText])) {
-            $methodName = $commandMapping[$buttonText];
-            Log::info('Button mapped to command', ['button' => $buttonText, 'command' => $methodName]);
-            
-            // Check permissions for supervisor commands
-            $supervisorCommands = ['lunch_status', 'lunch_schedule', 'lunch_settings', 'operators', 'reorder_queue', 'next_group'];
-            
-            if (in_array($methodName, $supervisorCommands) && !$user->isSupervisor()) {
-                $this->reply("❌ Bu buyruq faqat supervisor lar uchun!");
+        if ($command) {
+            // Check permissions
+            if (!$this->buttonService->checkPermission($command, $user)) {
                 return;
             }
             
             // Call the appropriate method
-            if (method_exists($this, $methodName)) {
-                $this->$methodName();
+            if (method_exists($this, $command)) {
+                $this->$command();
                 return;
-            }
-        }
-        
-        // If no exact match, try partial matching for common words
-        foreach ($commandMapping as $buttonKey => $command) {
-            if (strpos($buttonText, 'Tushlik') !== false && strpos($buttonKey, 'Tushlik') !== false) {
-                Log::info('Partial match found', ['button' => $buttonText, 'matched_key' => $buttonKey, 'command' => $command]);
-                if (method_exists($this, $command)) {
-                    $this->$command();
-                    return;
-                }
             }
         }
         
@@ -294,157 +170,24 @@ class Handler extends WebhookHandler
             return;
         }
         
-        // New lunch management commands
-        if (str_starts_with($command, 'set_lunch_time')) {
-            $this->handleSetLunchTime($command);
+        // Check if it's a settings command
+        if ($this->settingsService->handleSettingsCommand($command)) {
             return;
         }
         
-        if (str_starts_with($command, 'set_lunch_duration')) {
-            $this->handleSetLunchDuration($command);
+        // Check if it's an admin command
+        if ($this->adminService->handleAdminCommand($command)) {
             return;
         }
         
-        if (str_starts_with($command, 'set_max_operators')) {
-            $this->handleSetMaxOperators($command);
-            return;
-        }
-        
-        // Special command for testing - make user supervisor
-        if ($command === 'make_me_supervisor') {
-            $message = request()->input('message') ?? request()->input('edited_message');
-            $userId = $message['from']['id'] ?? null;
-            
-            if ($userId) {
-                // Update user to supervisor
-                $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-                $user->role = 'supervisor';
-                $user->save();
-                
-                $this->reply("✅ Siz supervisor sifatida belgilandi! /help ni bosib tekshiring.");
-                return;
-            }
-        }
-        
-        // Group sync command for supervisors
-        if ($command === 'sync_group_members') {
-            $message = request()->input('message') ?? request()->input('edited_message');
-            $userId = $message['from']['id'] ?? null;
-            $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-            
-            if (!$user->isSupervisor()) {
-                $this->reply("❌ Bu buyruq faqat supervisor lar uchun!");
-                return;
-            }
-            
-            // Use group chat ID from env file
-            $groupChatId = config('telegraph.chat_id') ?? env('TELEGRAPH_CHAT_ID');
-            if (!$groupChatId) {
-                $this->reply("❌ Guruh chat ID topilmadi!");
-                return;
-            }
-            
-            $groupService = new GroupMembersService();
-            $result = $groupService->syncGroupMembers((int)$groupChatId);
-            
-            if ($result['success']) {
-                $message = "✅ Guruh a'zolari sinxronlashdi!\n\n";
-                $message .= "📊 Natijalar:\n";
-                $message .= "👥 Jami sinxronlandi: {$result['synced_count']}\n";
-                $message .= "🆕 Yangi a'zolar: {$result['new_members']}\n";
-                $message .= "👨‍💼 Adminlar: {$result['admin_count']}\n";
-                $message .= "📈 Guruhda jami: {$result['total_estimated']} kishi";
-            } else {
-                $message = "❌ Sinxronlash xatosi: {$result['message']}";
-            }
-            
-            $this->reply($message);
-            return;
-        }
-        
-        // Register as operator command
-        if ($command === 'register_me') {
-            $message = request()->input('message') ?? request()->input('edited_message');
-            $userId = $message['from']['id'] ?? null;
-            $userInfo = $message['from'] ?? [];
-            
-            if ($userId) {
-                $groupService = new GroupMembersService();
-                $success = $groupService->registerAsOperator($userId, $userInfo);
-                
-                if ($success) {
-                    $this->reply("✅ Siz operator sifatida ro'yxatdan o'tdingiz!\n\n📞 Iltimos, /start buyrug'ini bosib telefon raqamingizni kiriting.");
-                } else {
-                    $this->reply("❌ Ro'yxatdan o'tishda xatolik yuz berdi.");
-                }
-                return;
-            }
-        }
-        
+        // Handle unknown commands through service
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $this->commandService->handleUnknownCommand($text->toString(), $user, $this);
     }
     
-    /**
-     * Handle set lunch time command
-     */
-    private function handleSetLunchTime(string $command): void
-    {
-        $this->initializeServices();
-        
-        $message = request()->input('message') ?? request()->input('edited_message');
-        $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-        
-        // Parse command parameters
-        $parts = explode(' ', $command);
-        array_shift($parts); // Remove command name
-        
-        $response = $this->lunchHandler->handleSetLunchTime($user, $parts);
-        $this->reply($response);
-    }
-    
-    /**
-     * Handle set lunch duration command
-     */
-    private function handleSetLunchDuration(string $command): void
-    {
-        $this->initializeServices();
-        
-        $message = request()->input('message') ?? request()->input('edited_message');
-        $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-        
-        // Parse command parameters
-        $parts = explode(' ', $command);
-        array_shift($parts); // Remove command name
-        
-        $response = $this->lunchHandler->handleSetLunchDuration($user, $parts);
-        $this->reply($response);
-    }
-    
-    /**
-     * Handle set max operators command
-     */
-    private function handleSetMaxOperators(string $command): void
-    {
-        $this->initializeServices();
-        
-        $message = request()->input('message') ?? request()->input('edited_message');
-        $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-        
-        // Parse command parameters
-        $parts = explode(' ', $command);
-        array_shift($parts); // Remove command name
-        
-        $response = $this->lunchHandler->handleSetMaxOperators($user, $parts);
-        $this->reply($response);
-    }
     
     
     // ============= SUPERVISOR COMMANDS =============
@@ -458,7 +201,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $response = $this->lunchHandler->handleLunchStatus($user);
         $this->reply($response);
@@ -473,7 +216,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $response = $this->lunchHandler->handleLunchSchedule($user);
         $this->reply($response);
@@ -488,7 +231,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $response = $this->lunchHandler->handleNextGroup($user);
         $this->messageService->sendMessage($response);
@@ -503,7 +246,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $response = $this->lunchHandler->handleLunchSettings($user);
         $this->messageService->sendMessage($response);
@@ -518,7 +261,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $response = $this->lunchHandler->handleOperators($user);
         $this->messageService->sendMessage($response);
@@ -533,7 +276,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $response = $this->lunchHandler->handleReorderQueue($user);
         $this->messageService->sendMessage($response);
@@ -545,80 +288,9 @@ class Handler extends WebhookHandler
     public function group_statistics(): void
     {
         $this->initializeServices();
-        
-        $message = request()->input('message') ?? request()->input('edited_message');
-        $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
-        
-        if (!$user->isSupervisor()) {
-            $this->reply("❌ Bu buyruq faqat supervisor lar uchun!");
-            return;
-        }
-        
-        // Get statistics from database
-        $totalUsers = \App\Models\UserManagement::count();
-        $supervisors = \App\Models\UserManagement::supervisors()->count();
-        $operators = \App\Models\UserManagement::operators()->count();
-        $activeUsers = \App\Models\UserManagement::active()->count();
-        
-        $message = "📊 Guruh statistikasi:\n\n";
-        $message .= "👥 Jami foydalanuvchilar: {$totalUsers}\n";
-        $message .= "👨‍💼 Supervisors: {$supervisors}\n";
-        $message .= "👨‍💻 Operators: {$operators}\n";
-        $message .= "✅ Faol foydalanuvchilar: {$activeUsers}\n\n";
-        
-        // Get group chat info
-        $groupChatId = config('telegraph.chat_id') ?? env('TELEGRAPH_CHAT_ID');
-        if ($groupChatId) {
-            $groupService = new GroupMembersService();
-            $bot = \DefStudio\Telegraph\Models\TelegraphBot::first();
-            if ($bot) {
-                $memberCount = $this->getGroupMemberCount((int)$groupChatId, $bot->token);
-                if ($memberCount) {
-                    $message .= "🏢 Telegram guruhida: {$memberCount} kishi\n";
-                    $unregistered = $memberCount - $totalUsers;
-                    $message .= "❓ Ro'yxatdan o'tmagan: {$unregistered} kishi";
-                }
-            }
-        }
-        
-        $this->reply($message);
+        $this->statisticsService->handleGroupStatistics();
     }
     
-    /**
-     * Get group member count
-     */
-    private function getGroupMemberCount(int $chatId, string $botToken): ?int
-    {
-        try {
-            $url = "https://api.telegram.org/bot{$botToken}/getChatMemberCount";
-            
-            $data = ['chat_id' => $chatId];
-            
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            if ($httpCode === 200 && $response) {
-                $result = json_decode($response, true);
-                
-                if ($result && $result['ok'] && isset($result['result'])) {
-                    return $result['result'];
-                }
-            }
-            
-            return null;
-        } catch (Exception $e) {
-            return null;
-        }
-    }
     
     // ============= OPERATOR COMMANDS =============
     
@@ -631,12 +303,12 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $result = $this->lunchHandler->handleMyLunch($user);
         
         if ($result['keyboard']) {
-            $this->chat->message($result['message'])->keyboard($result['keyboard'])->send();
+            $this->reply($result['message']); // Use reply method instead
         } else {
             $this->reply($result['message']);
         }
@@ -651,7 +323,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $response = $this->lunchHandler->handleLunchStart($user);
         $this->reply($response);
@@ -666,7 +338,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         $response = $this->lunchHandler->handleLunchEnd($user);
         $this->reply($response);
@@ -681,7 +353,7 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
-        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
         
         if (!$user->isOperator()) {
             $this->reply("❌ Bu buyruq faqat operatorlar uchun!");

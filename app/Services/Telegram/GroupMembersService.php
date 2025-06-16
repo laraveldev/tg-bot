@@ -147,7 +147,7 @@ class GroupMembersService
     /**
      * Get group member count
      */
-    private function getGroupMemberCount(int $chatId, string $botToken): ?int
+    public function getGroupMemberCount(int $chatId, string $botToken): ?int
     {
         try {
             $url = "https://api.telegram.org/bot{$botToken}/getChatMemberCount";

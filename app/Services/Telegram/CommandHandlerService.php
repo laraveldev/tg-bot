@@ -33,12 +33,15 @@ class CommandHandlerService
             . "👥 /operators - Operatorlar ro'yxati\n"
             . "🔄 /reorder_queue - Navbatni qayta tuzish\n"
             . "➡️ /next_group - Keyingi guruhga o'tish\n\n"
+            . "🔧 Sozlash buyruqlari:\n"
+            . "/set_lunch_time [smena_id] [bosh_vaqt] [tug_vaqt] - Tushlik vaqtini o'rnatish\n"
+            . "/set_lunch_duration [smena_id] [daqiqa] - Tushlik davomiyligini o'rnatish\n"
+            . "/set_max_operators [smena_id] [son] - Maksimal operatorlar sonini o'rnatish\n\n"
             . "Oddiy buyruqlar:\n"
             . "/info - Ma'lumotlaringiz\n"
             . "/help - Yordam";
             
-        // Use chat message instead of protected reply method
-        $handler->chat->message($message)->send();
+        $handler->sendReply($message);
     }
     
     /**
@@ -55,8 +58,7 @@ class CommandHandlerService
             . "/info - Ma'lumotlaringiz\n"
             . "/help - Yordam";
             
-        // Use chat message instead of protected reply method
-        $handler->chat->message($message)->send();
+        $handler->sendReply($message);
     }
     
     /**

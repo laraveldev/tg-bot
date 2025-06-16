@@ -258,6 +258,25 @@ class MessageService
             ])
             ->resize();
     }
+    
+    /**
+     * Send message with keyboard
+     */
+    public function sendMessageWithKeyboard(string $message, $keyboard): bool
+    {
+        try {
+            $this->chat->message($message)->replyKeyboard($keyboard)->send();
+            return true;
+        } catch (Exception $e) {
+            Log::error('Failed to send message with keyboard', [
+                'error' => $e->getMessage(),
+                'chat_id' => $this->chat->chat_id
+            ]);
+            
+            // Fallback to simple message
+            return $this->sendMessage($message);
+        }
+    }
 
     /**
      * Get operator keyboard

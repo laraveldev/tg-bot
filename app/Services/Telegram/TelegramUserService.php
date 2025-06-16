@@ -4,6 +4,7 @@ namespace App\Services\Telegram;
 
 use Illuminate\Support\Facades\DB;
 use App\Models\UserManagement;
+use App\Services\Telegram\AdminService;
 use Illuminate\Support\Facades\Log;
 
 class TelegramUserService
