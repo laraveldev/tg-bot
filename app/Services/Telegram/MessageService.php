@@ -249,6 +249,10 @@ class MessageService
                 \DefStudio\Telegraph\Keyboard\ReplyButton::make('➡️ Keyingi Guruh')
             ])
             ->row([
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('🔄 Guruh Sinxronlash'),
+                \DefStudio\Telegraph\Keyboard\ReplyButton::make('📊 Statistika')
+            ])
+            ->row([
                 \DefStudio\Telegraph\Keyboard\ReplyButton::make('ℹ️ Ma\'lumot'),
                 \DefStudio\Telegraph\Keyboard\ReplyButton::make('❓ Yordam')
             ])

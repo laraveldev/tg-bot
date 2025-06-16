@@ -11,6 +11,7 @@ use App\Services\Telegram\TelegramUserService;
 use App\Services\Telegram\MessageService;
 use App\Services\Telegram\CommandHandlerService;
 use App\Services\Telegram\LunchCommandHandler;
+use App\Services\Telegram\GroupMembersService;
 use App\Services\LunchManagement\LunchScheduleService;
 use Illuminate\Support\Facades\Log;
 use Exception;
@@ -224,6 +225,8 @@ class Handler extends WebhookHandler
             '👥 Operatorlar' => 'operators',
             '🔄 Navbat Tuzish' => 'reorder_queue',
             '➡️ Keyingi Guruh' => 'next_group',
+            '🔄 Guruh Sinxronlash' => 'sync_group_members',
+            '📊 Statistika' => 'group_statistics',
             // Operator commands
             '🍽️ Mening Tushligim' => 'my_lunch',
             '📅 Tushlik Navbati' => 'lunch_queue',
@@ -319,6 +322,61 @@ class Handler extends WebhookHandler
                 $user->save();
                 
                 $this->reply("✅ Siz supervisor sifatida belgilandi! /help ni bosib tekshiring.");
+                return;
+            }
+        }
+        
+        // Group sync command for supervisors
+        if ($command === 'sync_group_members') {
+            $message = request()->input('message') ?? request()->input('edited_message');
+            $userId = $message['from']['id'] ?? null;
+            $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+            
+            if (!$user->isSupervisor()) {
+                $this->reply("❌ Bu buyruq faqat supervisor lar uchun!");
+                return;
+            }
+            
+            // Use group chat ID from env file
+            $groupChatId = config('telegraph.chat_id') ?? env('TELEGRAPH_CHAT_ID');
+            if (!$groupChatId) {
+                $this->reply("❌ Guruh chat ID topilmadi!");
+                return;
+            }
+            
+            $groupService = new GroupMembersService();
+            $result = $groupService->syncGroupMembers((int)$groupChatId);
+            
+            if ($result['success']) {
+                $message = "✅ Guruh a'zolari sinxronlashdi!\n\n";
+                $message .= "📊 Natijalar:\n";
+                $message .= "👥 Jami sinxronlandi: {$result['synced_count']}\n";
+                $message .= "🆕 Yangi a'zolar: {$result['new_members']}\n";
+                $message .= "👨‍💼 Adminlar: {$result['admin_count']}\n";
+                $message .= "📈 Guruhda jami: {$result['total_estimated']} kishi";
+            } else {
+                $message = "❌ Sinxronlash xatosi: {$result['message']}";
+            }
+            
+            $this->reply($message);
+            return;
+        }
+        
+        // Register as operator command
+        if ($command === 'register_me') {
+            $message = request()->input('message') ?? request()->input('edited_message');
+            $userId = $message['from']['id'] ?? null;
+            $userInfo = $message['from'] ?? [];
+            
+            if ($userId) {
+                $groupService = new GroupMembersService();
+                $success = $groupService->registerAsOperator($userId, $userInfo);
+                
+                if ($success) {
+                    $this->reply("✅ Siz operator sifatida ro'yxatdan o'tdingiz!\n\n📞 Iltimos, /start buyrug'ini bosib telefon raqamingizni kiriting.");
+                } else {
+                    $this->reply("❌ Ro'yxatdan o'tishda xatolik yuz berdi.");
+                }
                 return;
             }
         }
@@ -479,6 +537,87 @@ class Handler extends WebhookHandler
         
         $response = $this->lunchHandler->handleReorderQueue($user);
         $this->messageService->sendMessage($response);
+    }
+    
+    /**
+     * Show group statistics
+     */
+    public function group_statistics(): void
+    {
+        $this->initializeServices();
+        
+        $message = request()->input('message') ?? request()->input('edited_message');
+        $userId = $message['from']['id'] ?? null;
+        $user = $this->userService->getOrCreateUser($this->chat->id, $userId);
+        
+        if (!$user->isSupervisor()) {
+            $this->reply("❌ Bu buyruq faqat supervisor lar uchun!");
+            return;
+        }
+        
+        // Get statistics from database
+        $totalUsers = \App\Models\UserManagement::count();
+        $supervisors = \App\Models\UserManagement::supervisors()->count();
+        $operators = \App\Models\UserManagement::operators()->count();
+        $activeUsers = \App\Models\UserManagement::active()->count();
+        
+        $message = "📊 Guruh statistikasi:\n\n";
+        $message .= "👥 Jami foydalanuvchilar: {$totalUsers}\n";
+        $message .= "👨‍💼 Supervisors: {$supervisors}\n";
+        $message .= "👨‍💻 Operators: {$operators}\n";
+        $message .= "✅ Faol foydalanuvchilar: {$activeUsers}\n\n";
+        
+        // Get group chat info
+        $groupChatId = config('telegraph.chat_id') ?? env('TELEGRAPH_CHAT_ID');
+        if ($groupChatId) {
+            $groupService = new GroupMembersService();
+            $bot = \DefStudio\Telegraph\Models\TelegraphBot::first();
+            if ($bot) {
+                $memberCount = $this->getGroupMemberCount((int)$groupChatId, $bot->token);
+                if ($memberCount) {
+                    $message .= "🏢 Telegram guruhida: {$memberCount} kishi\n";
+                    $unregistered = $memberCount - $totalUsers;
+                    $message .= "❓ Ro'yxatdan o'tmagan: {$unregistered} kishi";
+                }
+            }
+        }
+        
+        $this->reply($message);
+    }
+    
+    /**
+     * Get group member count
+     */
+    private function getGroupMemberCount(int $chatId, string $botToken): ?int
+    {
+        try {
+            $url = "https://api.telegram.org/bot{$botToken}/getChatMemberCount";
+            
+            $data = ['chat_id' => $chatId];
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode === 200 && $response) {
+                $result = json_decode($response, true);
+                
+                if ($result && $result['ok'] && isset($result['result'])) {
+                    return $result['result'];
+                }
+            }
+            
+            return null;
+        } catch (Exception $e) {
+            return null;
+        }
     }
     
     // ============= OPERATOR COMMANDS =============

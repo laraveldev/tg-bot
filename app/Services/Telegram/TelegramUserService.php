@@ -91,7 +91,7 @@ class TelegramUserService
             // Store as operator if not already in system
             $existingUser = UserManagement::where('telegram_user_id', $userId)->first();
             if (!$existingUser) {
-                UserManagement::create([
+                $newUser = UserManagement::create([
                     'telegram_chat_id' => $userId, // Use user ID for cross-chat identification
                     'telegram_user_id' => $userId,
                     'first_name' => $userInfo['first_name'] ?? null,
@@ -99,13 +99,61 @@ class TelegramUserService
                     'username' => $userInfo['username'] ?? null,
                     'role' => UserManagement::ROLE_OPERATOR,
                     'status' => UserManagement::STATUS_ACTIVE,
+                    'is_available_for_lunch' => true, // Default to available for lunch
                 ]);
                 
-                Log::info('Created new operator for group member', [
+                Log::info('Auto-registered group member as operator', [
                     'user_id' => $userId,
                     'group_chat_id' => $chatId,
+                    'full_name' => trim(($userInfo['first_name'] ?? '') . ' ' . ($userInfo['last_name'] ?? '')),
+                    'username' => $userInfo['username'] ?? null,
                     'role' => UserManagement::ROLE_OPERATOR
                 ]);
+                
+                // Send welcome message to user privately if possible
+                try {
+                    $bot = \DefStudio\Telegraph\Models\TelegraphBot::first();
+                    if ($bot) {
+                        $welcomeMessage = "🎉 Salom! Siz tizimga operator sifatida ro'yxatdan o'tdingiz.\n\n";
+                        $welcomeMessage .= "🍽️ Tushlik tizimidan foydalanish uchun botga shaxsan /start yuboring.";
+                        
+                        // Try to send private message
+                        $bot->chat($userId)->message($welcomeMessage)->send();
+                    }
+                } catch (\Exception $e) {
+                    // Ignore if we can't send private message
+                    Log::info('Could not send welcome message to new operator', [
+                        'user_id' => $userId,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            } else {
+                // Update existing user info if needed
+                $needsUpdate = false;
+                if (!$existingUser->first_name && !empty($userInfo['first_name'])) {
+                    $existingUser->first_name = $userInfo['first_name'];
+                    $needsUpdate = true;
+                }
+                if (!$existingUser->last_name && !empty($userInfo['last_name'])) {
+                    $existingUser->last_name = $userInfo['last_name'];
+                    $needsUpdate = true;
+                }
+                if (!$existingUser->username && !empty($userInfo['username'])) {
+                    $existingUser->username = $userInfo['username'];
+                    $needsUpdate = true;
+                }
+                
+                if ($needsUpdate) {
+                    $existingUser->save();
+                    Log::info('Updated existing user info', [
+                        'user_id' => $userId,
+                        'updated_fields' => array_keys(array_filter([
+                            'first_name' => !empty($userInfo['first_name']),
+                            'last_name' => !empty($userInfo['last_name']),
+                            'username' => !empty($userInfo['username'])
+                        ]))
+                    ]);
+                }
             }
         }
         
