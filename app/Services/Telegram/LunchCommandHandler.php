@@ -90,8 +90,13 @@ class LunchCommandHandler
             $operators = $this->scheduleService->getCurrentGroupOperators($schedule);
             
             $message .= "🏢 {$shift->name} ({$shift->start_time->format('H:i')} - {$shift->end_time->format('H:i')}):\n";
-            $message .= "🍽️ Tushlik vaqti: {$shift->lunch_start_time->format('H:i')} - {$shift->lunch_end_time->format('H:i')}\n";
-            $message .= "👥 Har guruhda: {$shift->max_lunch_operators} nafar\n\n";
+            
+            $lunchStart = $shift->lunch_start_time ? $shift->lunch_start_time->format('H:i') : 'Belgilanmagan';
+            $lunchEnd = $shift->lunch_end_time ? $shift->lunch_end_time->format('H:i') : 'Belgilanmagan';
+            $maxOperators = $shift->max_lunch_operators ?? 1;
+            
+            $message .= "🍽️ Tushlik vaqti: {$lunchStart} - {$lunchEnd}\n";
+            $message .= "👥 Har guruhda: {$maxOperators} nafar\n\n";
             
             if ($operators->isNotEmpty()) {
                 $message .= "Hozirgi guruh:\n";
@@ -173,9 +178,15 @@ class LunchCommandHandler
         foreach ($shifts as $shift) {
             $message .= "🏢 {$shift->name}:\n";
             $message .= "📅 Ish vaqti: {$shift->start_time->format('H:i')} - {$shift->end_time->format('H:i')}\n";
-            $message .= "🍽️ Tushlik vaqti: {$shift->lunch_start_time->format('H:i')} - {$shift->lunch_end_time->format('H:i')}\n";
-            $message .= "👥 Maksimal operatorlar: {$shift->max_lunch_operators}\n";
-            $message .= "⏱️ Tushlik davomiyligi: {$shift->lunch_duration} daqiqa\n";
+            
+            $lunchStart = $shift->lunch_start_time ? $shift->lunch_start_time->format('H:i') : 'Belgilanmagan';
+            $lunchEnd = $shift->lunch_end_time ? $shift->lunch_end_time->format('H:i') : 'Belgilanmagan';
+            $maxOperators = $shift->max_lunch_operators ?? 1;
+            $lunchDuration = $shift->lunch_duration ?? 30;
+            
+            $message .= "🍽️ Tushlik vaqti: {$lunchStart} - {$lunchEnd}\n";
+            $message .= "👥 Maksimal operatorlar: {$maxOperators}\n";
+            $message .= "⏱️ Tushlik davomiyligi: {$lunchDuration} daqiqa\n";
             $message .= "📊 Status: " . ($shift->is_active ? '✅ Faol' : '❌ Nofaol') . "\n\n";
         }
         
@@ -377,14 +388,14 @@ class LunchCommandHandler
         foreach ($schedules as $schedule) {
             try {
                 // Reset queue to beginning
-                $schedule->current_group_position = 1;
+                $schedule->current_position = 0;
                 $schedule->save();
                 
                 // Get operators for this schedule
                 $operators = $this->scheduleService->getCurrentGroupOperators($schedule);
                 
                 $message .= "✅ {$schedule->workShift->name} navbati qayta boshlandi\n";
-                $message .= "📍 Hozirgi pozitsiya: {$schedule->current_group_position}\n";
+                $message .= "📍 Hozirgi pozitsiya: {$schedule->getCurrentGroupNumber()}\n";
                 
                 if ($operators->isNotEmpty()) {
                     $message .= "👥 Hozirgi guruh:\n";

@@ -59,7 +59,15 @@ class SendLunchReminders extends Command
                 $message .= "📝 Tushlikka chiqishdan oldin /lunch_start buyrug'ini ishlating!";
                 
                 // Send reminder
-                $bot->chat($user->telegram_chat_id)->message($message)->send();
+                $chat = \DefStudio\Telegraph\Models\TelegraphChat::where('chat_id', $user->telegram_chat_id)->first();
+                if (!$chat) {
+                    // Create a temporary chat for this user
+                    $chat = $bot->chats()->create([
+                        'chat_id' => $user->telegram_chat_id,
+                        'name' => $user->full_name
+                    ]);
+                }
+                $chat->message($message)->send();
                 
                 // Mark reminder as sent
                 $lunchBreak->markReminderSent();
@@ -103,7 +111,14 @@ class SendLunchReminders extends Command
                 
                 foreach ($supervisors as $supervisor) {
                     try {
-                        $bot->chat($supervisor->telegram_chat_id)->message($message)->send();
+                        $chat = \DefStudio\Telegraph\Models\TelegraphChat::where('chat_id', $supervisor->telegram_chat_id)->first();
+                        if (!$chat) {
+                            $chat = $bot->chats()->create([
+                                'chat_id' => $supervisor->telegram_chat_id,
+                                'name' => $supervisor->full_name
+                            ]);
+                        }
+                        $chat->message($message)->send();
                     } catch (\Exception $e) {
                         $this->error("❌ Supervisor'ga xabar yuborishda xatolik: {$e->getMessage()}");
                     }

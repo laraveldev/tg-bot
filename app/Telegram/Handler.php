@@ -17,6 +17,7 @@ use App\Services\Telegram\HelpService;
 use App\Services\Telegram\InfoCommandService;
 use App\Services\Telegram\GroupMembersService;
 use App\Services\LunchManagement\LunchScheduleService;
+use App\Models\UserManagement;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
@@ -128,6 +129,12 @@ class Handler extends WebhookHandler
         
         $message = request()->input('message') ?? request()->input('edited_message');
         $userId = $message['from']['id'] ?? null;
+        $chatId = $this->getChatId();
+        
+        // For group messages, automatically register any new users as operators
+        if (intval($chatId) < 0 && $userId) {
+            $this->autoRegisterGroupMember($userId, $message['from'] ?? []);
+        }
         
         // Check if user is registered in management system
         $user = $this->userService->getOrCreateUser($this->getChatId(), $userId);
@@ -152,7 +159,193 @@ class Handler extends WebhookHandler
         // Handle chat message through service (this already replies)
         $this->commandService->handleChatMessage($user, $this);
     }
+    
+    /**
+     * Auto-register group members as operators when they send messages
+     */
+    private function autoRegisterGroupMember(int $userId, array $userInfo): void
+    {
+        try {
+            $existingUser = UserManagement::where('telegram_user_id', $userId)->first();
+            
+            if (!$existingUser) {
+                // Skip bots
+                if ($userInfo['is_bot'] ?? false) {
+                    return;
+                }
+                
+                $firstName = $userInfo['first_name'] ?? null;
+                $lastName = $userInfo['last_name'] ?? null;
+                $username = $userInfo['username'] ?? null;
+                
+                // Ensure we have at least a first name
+                if (!$firstName) {
+                    if ($lastName) {
+                        $firstName = $lastName;
+                        $lastName = null;
+                    } elseif ($username) {
+                        $firstName = $username;
+                    } else {
+                        $firstName = 'User ' . $userId;
+                    }
+                }
+                
+                // Check if they're admin in this group
+                $adminService = new \App\Services\Telegram\AdminService();
+                $isAdmin = $adminService->checkAndStoreUserAdminStatus(intval($this->getChatId()), $userId);
+                
+                $role = $isAdmin ? UserManagement::ROLE_SUPERVISOR : UserManagement::ROLE_OPERATOR;
+                
+                UserManagement::create([
+                    'telegram_chat_id' => $userId,
+                    'telegram_user_id' => $userId,
+                    'first_name' => $firstName,
+                    'last_name' => $lastName,
+                    'username' => $username,
+                    'role' => $role,
+                    'status' => UserManagement::STATUS_ACTIVE,
+                    'is_available_for_lunch' => $role === UserManagement::ROLE_OPERATOR,
+                ]);
+                
+                \Illuminate\Support\Facades\Log::info('Auto-registered group member from message', [
+                    'user_id' => $userId,
+                    'name' => trim($firstName . ' ' . ($lastName ?: '')),
+                    'username' => $username,
+                    'role' => $role,
+                    'is_admin' => $isAdmin
+                ]);
+                
+                // Send welcome message to new operators
+                if ($role === UserManagement::ROLE_OPERATOR) {
+                    try {
+                        $bot = \DefStudio\Telegraph\Models\TelegraphBot::first();
+                        if ($bot) {
+                            $welcomeMessage = "🎉 Salom {$firstName}!\n\n";
+                            $welcomeMessage .= "Siz avtomatik ravishda tushlik tizimiga operator sifatida qo'shildingiz.\n\n";
+                            $welcomeMessage .= "🍽️ Tushlik buyruqlaridan foydalanish uchun botga shaxsan /start yuboring.";
+                            
+                            $bot->chat($userId)->message($welcomeMessage)->send();
+                        }
+                    } catch (\Exception $e) {
+                        // Ignore if we can't send private message
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to auto-register group member', [
+                'user_id' => $userId,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * Handle chat member status updates (admin promotion/demotion)
+     */
+    public function handleChatMemberUpdated(): void
+    {
+        $this->initializeServices();
+        
+        try {
+            $update = request()->input('my_chat_member') ?? request()->input('chat_member');
+            
+            if (!$update) {
+                return;
+            }
+            
+            $chatId = $update['chat']['id'] ?? null;
+            $userId = $update['from']['id'] ?? null;
+            $newStatus = $update['new_chat_member']['status'] ?? null;
+            $oldStatus = $update['old_chat_member']['status'] ?? null;
+            
+            if (!$chatId || !$userId || !$newStatus || !$oldStatus) {
+                return;
+            }
+            
+            // Only handle group chats
+            if ($chatId >= 0) {
+                return;
+            }
+            
+            // Check if admin status changed
+            $wasAdmin = in_array($oldStatus, ['creator', 'administrator']);
+            $isAdmin = in_array($newStatus, ['creator', 'administrator']);
+            
+            if ($wasAdmin !== $isAdmin) {
+                $userInfo = $update['new_chat_member']['user'] ?? [];
+                
+                // Skip bots
+                if ($userInfo['is_bot'] ?? false) {
+                    return;
+                }
+                
+                $existingUser = UserManagement::where('telegram_user_id', $userId)->first();
+                
+                if ($isAdmin && (!$existingUser || $existingUser->role !== UserManagement::ROLE_SUPERVISOR)) {
+                    // Promote to supervisor
+                    UserManagement::updateOrCreate(
+                        ['telegram_user_id' => $userId],
+                        [
+                            'telegram_chat_id' => $userId,
+                            'first_name' => $userInfo['first_name'] ?? null,
+                            'last_name' => $userInfo['last_name'] ?? null,
+                            'username' => $userInfo['username'] ?? null,
+                            'role' => UserManagement::ROLE_SUPERVISOR,
+                            'status' => UserManagement::STATUS_ACTIVE,
+                        ]
+                    );
+                    
+                    \Illuminate\Support\Facades\Log::info('User promoted to supervisor via webhook', [
+                        'user_id' => $userId,
+                        'chat_id' => $chatId,
+                        'username' => $userInfo['username'] ?? 'N/A',
+                        'old_status' => $oldStatus,
+                        'new_status' => $newStatus
+                    ]);
+                    
+                } elseif (!$isAdmin && $existingUser && $existingUser->role === UserManagement::ROLE_SUPERVISOR) {
+                    // Demote to operator
+                    $existingUser->update([
+                        'role' => UserManagement::ROLE_OPERATOR,
+                        'first_name' => $userInfo['first_name'] ?? $existingUser->first_name,
+                        'last_name' => $userInfo['last_name'] ?? $existingUser->last_name,
+                        'username' => $userInfo['username'] ?? $existingUser->username,
+                    ]);
+                    
+                    \Illuminate\Support\Facades\Log::info('User demoted to operator via webhook', [
+                        'user_id' => $userId,
+                        'chat_id' => $chatId,
+                        'username' => $userInfo['username'] ?? 'N/A',
+                        'old_status' => $oldStatus,
+                        'new_status' => $newStatus
+                    ]);
+                }
+            }
+            
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Chat member update handling failed', [
+                'error' => $e->getMessage(),
+                'request_data' => request()->all()
+            ]);
+        }
+    }
 
+    /**
+     * Handle my_chat_member updates (when bot's status changes or when other members are promoted/demoted)
+     */
+    public function handleMyChatMemberUpdated(): void
+    {
+        $this->handleChatMemberUpdated();
+    }
+    
+    /**
+     * Handle regular chat_member updates
+     */
+    public function handleChatMember(): void 
+    {
+        $this->handleChatMemberUpdated();
+    }
+    
     protected function handleUnknownCommand(Stringable $text): void
     {
         $this->initializeServices();

@@ -57,9 +57,16 @@ class SyncGroupMembers extends Command
                 }
                 
                 $userId = $user['id'];
-                $firstName = $user['first_name'] ?? '';
-                $lastName = $user['last_name'] ?? '';
+                $firstName = $user['first_name'] ?? null;
+                $lastName = $user['last_name'] ?? null;
                 $username = $user['username'] ?? null;
+                
+                // Log the user data we're getting from Telegram
+                $this->line("📝 User data from Telegram API:");
+                $this->line("   ID: {$userId}");
+                $this->line("   First Name: " . ($firstName ?: 'NULL'));
+                $this->line("   Last Name: " . ($lastName ?: 'NULL'));
+                $this->line("   Username: " . ($username ?: 'NULL'));
                 
                 // Determine role based on admin status
                 $adminStatus = $admin['status'];
@@ -71,17 +78,34 @@ class SyncGroupMembers extends Command
                 $existingUser = UserManagement::where('telegram_user_id', $userId)->first();
                 
                 if ($existingUser) {
-                    // Update role if different
+                    // Update user data along with role
+                    $updateData = ['role' => $role];
+                    
+                    // Only update fields if they have values and current field is empty
+                    if ($firstName && !$existingUser->first_name) {
+                        $updateData['first_name'] = $firstName;
+                    }
+                    if ($lastName && !$existingUser->last_name) {
+                        $updateData['last_name'] = $lastName;
+                    }
+                    if ($username && !$existingUser->username) {
+                        $updateData['username'] = $username;
+                    }
+                    
+                    $existingUser->update($updateData);
+                    
                     if ($existingUser->role !== $role) {
-                        $existingUser->role = $role;
-                        $existingUser->save();
                         $this->info("🔄 Updated {$firstName} {$lastName} role to {$role}");
                         $updated++;
                     } else {
                         $this->line("⏭️  {$firstName} {$lastName} already synced as {$role}");
                     }
                 } else {
-                    // Create new user
+                    // Create new user - make sure we have at least first_name
+                    if (!$firstName) {
+                        $firstName = 'User'; // Fallback name
+                    }
+                    
                     UserManagement::create([
                         'telegram_chat_id' => $userId, // Use user ID for private chats
                         'telegram_user_id' => $userId,
