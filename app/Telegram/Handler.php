@@ -23,6 +23,7 @@ use Exception;
 
 class Handler extends WebhookHandler
 {
+    use \App\Telegram\Commands\StartCommand;
     private TelegramUserService $userService;
     private MessageService $messageService;
     private CommandHandlerService $commandService;
@@ -84,35 +85,35 @@ class Handler extends WebhookHandler
         $this->reply($message);
     }
 
-    public function start(): void
-    {
-        $this->initializeServices();
-        $this->startService->handleStart();
-    }
+    // public function start(): void
+    // {
+    //     $this->initializeServices();
+    //     $this->startService->handleStart();
+    // }
 
-    public function info(): void
-    {
-        $this->initializeServices();
-        $this->infoService->handleInfo();
-    }
+    // public function info(): void
+    // {
+    //     $this->initializeServices();
+    //     $this->infoService->handleInfo();
+    // }
 
-    public function about(): void
-    {
-        $this->initializeServices();
-        $this->infoService->handleAbout();
-    }
+    // public function about(): void
+    // {
+    //     $this->initializeServices();
+    //     $this->infoService->handleAbout();
+    // }
 
-    public function contact(): void
-    {
-        $this->initializeServices();
-        $this->infoService->handleContact();
-    }
+    // public function contact(): void
+    // {
+    //     $this->initializeServices();
+    //     $this->infoService->handleContact();
+    // }
 
-    public function help(): void
-    {
-        $this->initializeServices();
-        $this->helpService->handleHelp();
-    }
+    // public function help(): void
+    // {
+    //     $this->initializeServices();
+    //     $this->helpService->handleHelp();
+    // }
 
     public function onContactReceived(array $contact): void
     {
